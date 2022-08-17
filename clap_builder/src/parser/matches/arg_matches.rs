@@ -111,7 +111,11 @@ impl ArgMatches {
     /// [positional]: crate::Arg::index()
     /// [`default_value`]: crate::Arg::default_value()
     #[cfg_attr(debug_assertions, track_caller)]
-    pub fn get_one<T: Any + Clone + Send + Sync + 'static>(&self, id: &str) -> Option<&T> {
+    pub fn get_one<T: Any + Clone + Send + Sync + 'static>(
+        &self,
+        id: impl AsRef<str>,
+    ) -> Option<&T> {
+        let id = id.as_ref();
         MatchesError::unwrap(id, self.try_get_one(id))
     }
 
@@ -141,7 +145,8 @@ impl ArgMatches {
     /// );
     /// ```
     #[cfg_attr(debug_assertions, track_caller)]
-    pub fn get_count(&self, id: &str) -> u8 {
+    pub fn get_count(&self, id: impl AsRef<str>) -> u8 {
+        let id = id.as_ref();
         *self.get_one::<u8>(id).unwrap_or_else(|| {
             panic!("arg `{id}`'s `ArgAction` should be `Count` which should provide a default")
         })
@@ -174,7 +179,8 @@ impl ArgMatches {
     /// );
     /// ```
     #[cfg_attr(debug_assertions, track_caller)]
-    pub fn get_flag(&self, id: &str) -> bool {
+    pub fn get_flag(&self, id: impl AsRef<str>) -> bool {
+        let id = id.as_ref();
         *self
             .get_one::<bool>(id)
             .unwrap_or_else(|| {
@@ -220,8 +226,9 @@ impl ArgMatches {
     #[cfg_attr(debug_assertions, track_caller)]
     pub fn get_many<T: Any + Clone + Send + Sync + 'static>(
         &self,
-        id: &str,
+        id: impl AsRef<str>,
     ) -> Option<ValuesRef<'_, T>> {
+        let id = id.as_ref();
         MatchesError::unwrap(id, self.try_get_many(id))
     }
 
@@ -258,8 +265,9 @@ impl ArgMatches {
     #[cfg_attr(debug_assertions, track_caller)]
     pub fn get_occurrences<T: Any + Clone + Send + Sync + 'static>(
         &self,
-        id: &str,
+        id: impl AsRef<str>,
     ) -> Option<OccurrencesRef<'_, T>> {
+        let id = id.as_ref();
         MatchesError::unwrap(id, self.try_get_occurrences(id))
     }
 
@@ -307,7 +315,8 @@ impl ArgMatches {
     /// [values]: OsValues
     /// [`String`]: std::string::String
     #[cfg_attr(debug_assertions, track_caller)]
-    pub fn get_raw(&self, id: &str) -> Option<RawValues<'_>> {
+    pub fn get_raw(&self, id: impl AsRef<str>) -> Option<RawValues<'_>> {
+        let id = id.as_ref();
         MatchesError::unwrap(id, self.try_get_raw(id))
     }
 
@@ -362,7 +371,8 @@ impl ArgMatches {
     /// [values]: OsValues
     /// [`String`]: std::string::String
     #[cfg_attr(debug_assertions, track_caller)]
-    pub fn get_raw_occurrences(&self, id: &str) -> Option<RawOccurrences<'_>> {
+    pub fn get_raw_occurrences(&self, id: impl AsRef<str>) -> Option<RawOccurrences<'_>> {
+        let id = id.as_ref();
         MatchesError::unwrap(id, self.try_get_raw_occurrences(id))
     }
 
@@ -401,7 +411,11 @@ impl ArgMatches {
     /// [positional]: crate::Arg::index()
     /// [`default_value`]: crate::Arg::default_value()
     #[cfg_attr(debug_assertions, track_caller)]
-    pub fn remove_one<T: Any + Clone + Send + Sync + 'static>(&mut self, id: &str) -> Option<T> {
+    pub fn remove_one<T: Any + Clone + Send + Sync + 'static>(
+        &mut self,
+        id: impl AsRef<str>,
+    ) -> Option<T> {
+        let id = id.as_ref();
         MatchesError::unwrap(id, self.try_remove_one(id))
     }
 
@@ -439,8 +453,9 @@ impl ArgMatches {
     #[cfg_attr(debug_assertions, track_caller)]
     pub fn remove_many<T: Any + Clone + Send + Sync + 'static>(
         &mut self,
-        id: &str,
+        id: impl AsRef<str>,
     ) -> Option<Values<T>> {
+        let id = id.as_ref();
         MatchesError::unwrap(id, self.try_remove_many(id))
     }
 
@@ -478,8 +493,9 @@ impl ArgMatches {
     #[cfg_attr(debug_assertions, track_caller)]
     pub fn remove_occurrences<T: Any + Clone + Send + Sync + 'static>(
         &mut self,
-        id: &str,
+        id: impl AsRef<str>,
     ) -> Option<Occurrences<T>> {
+        let id = id.as_ref();
         MatchesError::unwrap(id, self.try_remove_occurrences(id))
     }
 
@@ -510,7 +526,8 @@ impl ArgMatches {
     /// ```
     ///
     /// [`default_value`]: crate::Arg::default_value()
-    pub fn contains_id(&self, id: &str) -> bool {
+    pub fn contains_id(&self, id: impl AsRef<str>) -> bool {
+        let id = id.as_ref();
         MatchesError::unwrap(id, self.try_contains_id(id))
     }
 
@@ -591,7 +608,8 @@ impl ArgMatches {
     ///
     /// [`default_value`]: crate::Arg::default_value()
     #[cfg_attr(debug_assertions, track_caller)]
-    pub fn value_source(&self, id: &str) -> Option<ValueSource> {
+    pub fn value_source(&self, id: impl AsRef<str>) -> Option<ValueSource> {
+        let id = id.as_ref();
         let value = self.get_arg(id);
 
         value.and_then(MatchedArg::source)
@@ -745,7 +763,8 @@ impl ArgMatches {
     /// ```
     /// [delimiter]: crate::Arg::value_delimiter()
     #[cfg_attr(debug_assertions, track_caller)]
-    pub fn index_of(&self, id: &str) -> Option<usize> {
+    pub fn index_of(&self, id: impl AsRef<str>) -> Option<usize> {
+        let id = id.as_ref();
         let arg = some!(self.get_arg(id));
         let i = some!(arg.get_index(0));
         Some(i)
@@ -830,7 +849,8 @@ impl ArgMatches {
     /// [`ArgMatches::index_of`]: ArgMatches::index_of()
     /// [delimiter]: Arg::value_delimiter()
     #[cfg_attr(debug_assertions, track_caller)]
-    pub fn indices_of(&self, id: &str) -> Option<Indices<'_>> {
+    pub fn indices_of(&self, id: impl AsRef<str>) -> Option<Indices<'_>> {
+        let id = id.as_ref();
         let arg = some!(self.get_arg(id));
         let i = Indices {
             iter: arg.indices(),
@@ -1001,7 +1021,8 @@ impl ArgMatches {
     ///
     /// [subcommand]: crate::Command::subcommand
     /// [`Command`]: crate::Command
-    pub fn subcommand_matches(&self, name: &str) -> Option<&ArgMatches> {
+    pub fn subcommand_matches(&self, name: impl AsRef<str>) -> Option<&ArgMatches> {
+        let name = name.as_ref();
         self.get_subcommand(name).map(|sc| &sc.matches)
     }
 
@@ -1041,7 +1062,8 @@ impl ArgMatches {
     /// before they do a query on `ArgMatches`.
     #[inline]
     #[doc(hidden)]
-    pub fn is_valid_subcommand(&self, _name: &str) -> bool {
+    pub fn is_valid_subcommand(&self, _name: impl AsRef<str>) -> bool {
+        let _name = _name.as_ref();
         #[cfg(debug_assertions)]
         {
             _name.is_empty() || self.valid_subcommands.iter().any(|s| *s == _name)
@@ -1058,8 +1080,9 @@ impl ArgMatches {
     /// Non-panicking version of [`ArgMatches::get_one`]
     pub fn try_get_one<T: Any + Clone + Send + Sync + 'static>(
         &self,
-        id: &str,
+        id: impl AsRef<str>,
     ) -> Result<Option<&T>, MatchesError> {
+        let id = id.as_ref();
         let arg = ok!(self.try_get_arg_t::<T>(id));
         let value = match arg.and_then(|a| a.first()) {
             Some(value) => value,
@@ -1076,8 +1099,9 @@ impl ArgMatches {
     /// Non-panicking version of [`ArgMatches::get_many`]
     pub fn try_get_many<T: Any + Clone + Send + Sync + 'static>(
         &self,
-        id: &str,
+        id: impl AsRef<str>,
     ) -> Result<Option<ValuesRef<'_, T>>, MatchesError> {
+        let id = id.as_ref();
         let arg = match ok!(self.try_get_arg_t::<T>(id)) {
             Some(arg) => arg,
             None => return Ok(None),
@@ -1095,8 +1119,9 @@ impl ArgMatches {
     /// Non-panicking version of [`ArgMatches::get_occurrences`]
     pub fn try_get_occurrences<T: Any + Clone + Send + Sync + 'static>(
         &self,
-        id: &str,
+        id: impl AsRef<str>,
     ) -> Result<Option<OccurrencesRef<'_, T>>, MatchesError> {
+        let id = id.as_ref();
         let arg = match ok!(self.try_get_arg_t::<T>(id)) {
             Some(arg) => arg,
             None => return Ok(None),
@@ -1110,7 +1135,8 @@ impl ArgMatches {
     }
 
     /// Non-panicking version of [`ArgMatches::get_raw`]
-    pub fn try_get_raw(&self, id: &str) -> Result<Option<RawValues<'_>>, MatchesError> {
+    pub fn try_get_raw(&self, id: impl AsRef<str>) -> Result<Option<RawValues<'_>>, MatchesError> {
+        let id = id.as_ref();
         let arg = match ok!(self.try_get_arg(id)) {
             Some(arg) => arg,
             None => return Ok(None),
@@ -1127,8 +1153,9 @@ impl ArgMatches {
     /// Non-panicking version of [`ArgMatches::get_raw_occurrences`]
     pub fn try_get_raw_occurrences(
         &self,
-        id: &str,
+        id: impl AsRef<str>,
     ) -> Result<Option<RawOccurrences<'_>>, MatchesError> {
+        let id = id.as_ref();
         let arg = match ok!(self.try_get_arg(id)) {
             Some(arg) => arg,
             None => return Ok(None),
@@ -1145,8 +1172,9 @@ impl ArgMatches {
     /// Non-panicking version of [`ArgMatches::remove_one`]
     pub fn try_remove_one<T: Any + Clone + Send + Sync + 'static>(
         &mut self,
-        id: &str,
+        id: impl AsRef<str>,
     ) -> Result<Option<T>, MatchesError> {
+        let id = id.as_ref();
         match ok!(self.try_remove_arg_t::<T>(id)) {
             Some(values) => Ok(values
                 .into_vals_flatten()
@@ -1160,8 +1188,9 @@ impl ArgMatches {
     /// Non-panicking version of [`ArgMatches::remove_many`]
     pub fn try_remove_many<T: Any + Clone + Send + Sync + 'static>(
         &mut self,
-        id: &str,
+        id: impl AsRef<str>,
     ) -> Result<Option<Values<T>>, MatchesError> {
+        let id = id.as_ref();
         let arg = match ok!(self.try_remove_arg_t::<T>(id)) {
             Some(arg) => arg,
             None => return Ok(None),
@@ -1179,8 +1208,9 @@ impl ArgMatches {
     /// Non-panicking version of [`ArgMatches::remove_occurrences`]
     pub fn try_remove_occurrences<T: Any + Clone + Send + Sync + 'static>(
         &mut self,
-        id: &str,
+        id: impl AsRef<str>,
     ) -> Result<Option<Occurrences<T>>, MatchesError> {
+        let id = id.as_ref();
         let arg = match ok!(self.try_remove_arg_t::<T>(id)) {
             Some(arg) => arg,
             None => return Ok(None),
@@ -1195,7 +1225,8 @@ impl ArgMatches {
     }
 
     /// Non-panicking version of [`ArgMatches::contains_id`]
-    pub fn try_contains_id(&self, id: &str) -> Result<bool, MatchesError> {
+    pub fn try_contains_id(&self, id: impl AsRef<str>) -> Result<bool, MatchesError> {
+        let id = id.as_ref();
         ok!(self.verify_arg(id));
 
         let presence = self.args.contains_key(id);

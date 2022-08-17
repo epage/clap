@@ -61,13 +61,11 @@ impl Value {
     pub fn from_matches(matches: &ArgMatches) -> Vec<(clap::Id, Self)> {
         let mut values = BTreeMap::new();
         for id in matches.ids() {
-            if matches.try_get_many::<clap::Id>(id.as_str()).is_ok() {
+            if matches.try_get_many::<clap::Id>(id).is_ok() {
                 // ignore groups
                 continue;
             }
-            let value_source = matches
-                .value_source(id.as_str())
-                .expect("id came from matches");
+            let value_source = matches.value_source(id).expect("id came from matches");
             if value_source != clap::parser::ValueSource::CommandLine {
                 // Any other source just gets tacked on at the end (like default values)
                 continue;
@@ -88,13 +86,11 @@ impl Value {
         id: &clap::Id,
         output: &mut BTreeMap<usize, (clap::Id, Self)>,
     ) -> bool {
-        match matches.try_get_many::<T>(id.as_str()) {
+        match matches.try_get_many::<T>(id) {
             Ok(Some(values)) => {
-                for (value, index) in values.zip(
-                    matches
-                        .indices_of(id.as_str())
-                        .expect("id came from matches"),
-                ) {
+                for (value, index) in
+                    values.zip(matches.indices_of(id).expect("id came from matches"))
+                {
                     output.insert(index, (id.clone(), value.clone().into()));
                 }
                 true
