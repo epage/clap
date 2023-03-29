@@ -1800,6 +1800,49 @@ fn custom_help_headers_hide_args() {
     utils::assert_output(cmd, "test -h", CUSTOM_HELP_SECTION_HIDDEN_ARGS, false);
 }
 
+#[test]
+fn positional_aligns_with_flags() {
+    static CUSTOM_HELP_SECTION: &str = "\
+does stuff
+
+Usage: test [OPTIONS] [positional]
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+All:
+  -s                Short
+      --long        Long
+  -l, --short-long  Both short and long
+  [positional]  Positional
+";
+
+    let cmd = Command::new("blorp")
+        .author("Will M.")
+        .about("does stuff")
+        .version("1.4")
+        .next_help_heading(Some("All"))
+        .args([
+            Arg::new("positional").help("Positional"),
+            Arg::new("short")
+                .short('s')
+                .action(ArgAction::SetTrue)
+                .help("Short"),
+            Arg::new("long")
+                .long("long")
+                .action(ArgAction::SetTrue)
+                .help("Long"),
+            Arg::new("short-long")
+                .short('l')
+                .long("short-long")
+                .action(ArgAction::SetTrue)
+                .help("Both short and long"),
+        ]);
+
+    utils::assert_output(cmd, "test --help", CUSTOM_HELP_SECTION, false);
+}
+
 static ISSUE_897: &str = "\
 Long about foo
 
