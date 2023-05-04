@@ -399,7 +399,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
             let help_heading = "Arguments";
             let _ = write!(
                 self.writer,
-                "{}{help_heading}:{}\n",
+                "{}{help_heading}:{}",
                 header.render(),
                 header.render_reset()
             );
@@ -414,7 +414,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
             let help_heading = "Options";
             let _ = write!(
                 self.writer,
-                "{}{help_heading}:{}\n",
+                "{}{help_heading}:{}",
                 header.render(),
                 header.render_reset()
             );
@@ -441,7 +441,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
                     first = false;
                     let _ = write!(
                         self.writer,
-                        "{}{heading}:{}\n",
+                        "{}{heading}:{}",
                         header.render(),
                         header.render_reset()
                     );
@@ -453,55 +453,111 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
     /// Sorts arguments by length and display order and write their help to the wrapped stream.
     fn write_args(&mut self, args: &[&Arg], _category: &str, sort_key: ArgSortKey) {
         debug!("HelpTemplate::write_args {}", _category);
-        // The shortest an arg can legally be is 2 (i.e. '-x')
-        let mut longest = 2;
+        use std::fmt::Write as _;
         let mut ord_v = Vec::new();
+        let mut next_line_help = self.next_line_help || self.use_long;
 
-        // Determine the longest
         for &arg in args.iter().filter(|arg| {
             // If it's NextLineHelp we don't care to compute how long it is because it may be
             // NextLineHelp on purpose simply *because* it's so long and would throw off all other
             // args alignment
             should_show_arg(self.use_long, arg)
         }) {
-            if longest_filter(arg) {
-                longest = longest.max(display_width(&arg.to_string()));
-                debug!(
-                    "HelpTemplate::write_args: arg={:?} longest={}",
-                    arg.get_id(),
-                    longest
-                );
-            }
-
-            let key = (sort_key)(arg);
-            ord_v.push((key, arg));
+            let key = sort_key(arg);
+            let spec = self.render_arg_spec(arg);
+            let help = self.render_arg_help(arg);
+            ord_v.push((key, spec, help));
+            next_line_help |= arg.is_next_line_help_set();
         }
-        ord_v.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let next_line_help = self.will_args_wrap(args, longest);
-
-        for (i, (_, arg)) in ord_v.iter().enumerate() {
-            if i != 0 {
-                self.writer.push_str("\n");
-                if next_line_help && self.use_long {
-                    self.writer.push_str("\n");
+        ord_v.sort_by(|left, right| {
+            // Formatting key like this to ensure that:
+            // 1. Argument has long flags are printed just after short flags.
+            // 2. For two args both have short flags like `-c` and `-C`, the
+            //    `-C` arg is printed just after the `-c` arg
+            // 3. For args without short or long flag, print them at last(sorted
+            //    by arg name).
+            // Example order: -a, -b, -B, -s, --select-file, --select-folder, -x
+            fn normalize(c: u8) -> u8 {
+                if c == b' ' {
+                    b'{'
+                } else {
+                    c.to_ascii_lowercase()
                 }
             }
-            self.write_arg(arg, next_line_help, longest);
+            let mut cmp = left.0.cmp(&right.0);
+            if cmp == std::cmp::Ordering::Equal {
+                let left_chars = left.1.as_styled_str().bytes().map(normalize);
+                let right_chars = right.1.as_styled_str().bytes().map(normalize);
+                cmp = left_chars.cmp(right_chars);
+            }
+            cmp
+        });
+
+        let mut longest = 0;
+        for (_, spec, _) in &ord_v {
+            longest = longest.max(spec.display_width());
+        }
+        let help_start = TAB_WIDTH + longest + TAB_WIDTH;
+        let remaining = self.term_w - help_start;
+        for (_, _, help) in &ord_v {
+            let help_width = help.display_width();
+            next_line_help |= self.term_w >= help_start
+                && (help_start as f32 / self.term_w as f32) > 0.40
+                && remaining < help_width;
+        }
+
+        if next_line_help {
+            for (_, spec, mut help) in ord_v {
+                help.indent("", NEXT_LINE_INDENT);
+                self.writer.push_str("\n");
+                if self.use_long {
+                    self.writer.push_str("\n");
+                }
+                let _ = write!(self.writer, "{TAB}{spec}");
+                let _ = write!(self.writer, "{NEXT_LINE_INDENT}{help}");
+            }
+        } else {
+            let help_indent = format!("{:help_start$}", "");
+            for (_, spec, mut help) in ord_v {
+                help.indent("", &help_indent);
+                let padding = longest - spec.display_width();
+                self.writer.push_str("\n");
+                let _ = write!(self.writer, "{TAB}{spec}{:padding$}{TAB}{help}", "");
+            }
         }
     }
 
-    /// Writes help for an argument to the wrapped stream.
-    fn write_arg(&mut self, arg: &Arg, next_line_help: bool, longest: usize) {
-        let mut spec_vals = StyledStr::new();
-        self.spec_vals(&mut spec_vals, arg);
+    fn render_arg_spec(&self, arg: &Arg) -> StyledStr {
+        use std::fmt::Write as _;
+        let literal = &self.styles.get_literal();
+        let mut styled = StyledStr::new();
 
-        self.writer.push_str(TAB);
-        self.short(arg);
-        self.long(arg);
-        self.writer
-            .push_styled(&arg.stylize_arg_suffix(self.styles, None));
-        self.align_to_about(arg, next_line_help, longest);
+        if let Some(s) = arg.get_short() {
+            let _ = write!(styled, "{}-{s}{}", literal.render(), literal.render_reset());
+        } else if arg.get_long().is_some() {
+            styled.push_str("    ");
+        }
+
+        if let Some(long) = arg.get_long() {
+            if arg.get_short().is_some() {
+                styled.push_str(", ");
+            }
+            let _ = write!(
+                styled,
+                "{}--{long}{}",
+                literal.render(),
+                literal.render_reset()
+            );
+        }
+
+        styled.push_styled(&arg.stylize_arg_suffix(self.styles, None));
+
+        styled
+    }
+
+    fn render_arg_help(&self, arg: &Arg) -> StyledStr {
+        use std::fmt::Write as _;
+        let literal = &self.styles.get_literal();
 
         let about = if self.use_long {
             arg.get_long_help()
@@ -512,90 +568,63 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
                 .or_else(|| arg.get_long_help())
                 .unwrap_or_default()
         };
+        let mut spec_vals = StyledStr::new();
+        self.spec_vals(&mut spec_vals, arg);
 
-        self.help(Some(arg), about, &spec_vals, next_line_help, longest);
-    }
+        // Is help on next line, if so then indent
+        let mut styled = about.clone();
+        styled.replace_newline_var();
 
-    /// Writes argument's short command to the wrapped stream.
-    fn short(&mut self, arg: &Arg) {
-        debug!("HelpTemplate::short");
-        use std::fmt::Write as _;
-        let literal = &self.styles.get_literal();
-
-        if let Some(s) = arg.get_short() {
-            let _ = write!(
-                self.writer,
-                "{}-{s}{}",
-                literal.render(),
-                literal.render_reset()
-            );
-        } else if arg.get_long().is_some() {
-            self.writer.push_str("    ");
-        }
-    }
-
-    /// Writes argument's long command to the wrapped stream.
-    fn long(&mut self, arg: &Arg) {
-        debug!("HelpTemplate::long");
-        use std::fmt::Write as _;
-        let literal = &self.styles.get_literal();
-
-        if let Some(long) = arg.get_long() {
-            if arg.get_short().is_some() {
-                self.writer.push_str(", ");
+        if !spec_vals.is_empty() {
+            if !styled.is_empty() {
+                let sep = if self.use_long { "\n\n" } else { " " };
+                styled.push_str(sep);
             }
-            let _ = write!(
-                self.writer,
-                "{}--{long}{}",
-                literal.render(),
-                literal.render_reset()
-            );
+            styled.push_styled(&spec_vals);
         }
-    }
 
-    /// Write alignment padding between arg's switches/values and its about message.
-    fn align_to_about(&mut self, arg: &Arg, next_line_help: bool, longest: usize) {
-        debug!(
-            "HelpTemplate::align_to_about: arg={}, next_line_help={}, longest={}",
-            arg.get_id(),
-            next_line_help,
-            longest
-        );
-        let padding = if self.use_long || next_line_help {
-            // long help prints messages on the next line so it doesn't need to align text
-            debug!("HelpTemplate::align_to_about: printing long help so skip alignment");
-            0
-        } else if !arg.is_positional() {
-            let self_len = display_width(&arg.to_string());
-            // Since we're writing spaces from the tab point we first need to know if we
-            // had a long and short, or just short
-            let padding = if arg.get_long().is_some() {
-                // Only account 4 after the val
-                TAB_WIDTH
-            } else {
-                // Only account for ', --' + 4 after the val
-                TAB_WIDTH + 4
-            };
-            let spcs = longest + padding - self_len;
+        let possible_vals = arg.get_possible_values();
+        if !possible_vals.is_empty() && !arg.is_hide_possible_values_set() && self.use_long_pv(arg)
+        {
             debug!(
-                "HelpTemplate::align_to_about: positional=false arg_len={}, spaces={}",
-                self_len, spcs
+                "HelpTemplate::help: Found possible vals...{:?}",
+                possible_vals
             );
+            let longest = possible_vals
+                .iter()
+                .filter(|f| !f.is_hide_set())
+                .map(|f| display_width(f.get_name()))
+                .max()
+                .expect("Only called with possible value");
 
-            spcs
-        } else {
-            let self_len = display_width(&arg.to_string());
-            let padding = TAB_WIDTH;
-            let spcs = longest + padding - self_len;
-            debug!(
-                "HelpTemplate::align_to_about: positional=true arg_len={}, spaces={}",
-                self_len, spcs
-            );
+            if !styled.is_empty() {
+                styled.push_str("\n\n");
+            }
+            styled.push_str("Possible values:");
+            for pv in possible_vals.iter().filter(|pv| !pv.is_hide_set()) {
+                let indent = TAB;
+                let name = pv.get_name();
+                let _ = write!(
+                    styled,
+                    "\n{indent}- {}{name}{}",
+                    literal.render(),
+                    literal.render_reset()
+                );
+                if let Some(help) = pv.get_help() {
+                    debug!("HelpTemplate::help: Possible Value help");
+                    // To align help messages
+                    let padding = longest - display_width(pv.get_name());
+                    let _ = write!(styled, ": {:padding$}", "");
 
-            spcs
-        };
+                    let mut help = help.clone();
+                    help.replace_newline_var();
+                    help.indent("", indent);
+                    styled.push_styled(&help);
+                }
+            }
+        }
 
-        self.write_padding(padding);
+        styled
     }
 
     /// Writes argument's help to the wrapped stream.
@@ -708,36 +737,6 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
                     }
                 }
             }
-        }
-    }
-
-    /// Will use next line help on writing args.
-    fn will_args_wrap(&self, args: &[&Arg], longest: usize) -> bool {
-        args.iter()
-            .filter(|arg| should_show_arg(self.use_long, arg))
-            .any(|arg| {
-                let mut spec_vals = StyledStr::new();
-                self.spec_vals(&mut spec_vals, arg);
-                self.arg_next_line_help(arg, &spec_vals, longest)
-            })
-    }
-
-    fn arg_next_line_help(&self, arg: &Arg, spec_vals: &StyledStr, longest: usize) -> bool {
-        if self.next_line_help || arg.is_next_line_help_set() || self.use_long {
-            // setting_next_line
-            true
-        } else {
-            // force_next_line
-            let h = arg.get_help().unwrap_or_default();
-            let h_w = h.display_width() + spec_vals.display_width();
-            let taken = if arg.is_positional() {
-                longest + TAB_WIDTH * 2
-            } else {
-                longest + TAB_WIDTH * 2 + 4 // See `fn short` for the 4
-            };
-            self.term_w >= taken
-                && (taken as f32 / self.term_w as f32) > 0.40
-                && h_w > (self.term_w - taken)
         }
     }
 
@@ -1008,33 +1007,14 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
 
 const NEXT_LINE_INDENT: &str = "        ";
 
-type ArgSortKey = fn(arg: &Arg) -> (usize, String);
+type ArgSortKey = fn(arg: &Arg) -> usize;
 
-fn positional_sort_key(arg: &Arg) -> (usize, String) {
-    (arg.get_index().unwrap_or(0), String::new())
+fn positional_sort_key(arg: &Arg) -> usize {
+    arg.get_index().unwrap_or(0)
 }
 
-fn option_sort_key(arg: &Arg) -> (usize, String) {
-    // Formatting key like this to ensure that:
-    // 1. Argument has long flags are printed just after short flags.
-    // 2. For two args both have short flags like `-c` and `-C`, the
-    //    `-C` arg is printed just after the `-c` arg
-    // 3. For args without short or long flag, print them at last(sorted
-    //    by arg name).
-    // Example order: -a, -b, -B, -s, --select-file, --select-folder, -x
-
-    let key = if let Some(x) = arg.get_short() {
-        let mut s = x.to_ascii_lowercase().to_string();
-        s.push(if x.is_ascii_lowercase() { '0' } else { '1' });
-        s
-    } else if let Some(x) = arg.get_long() {
-        x.to_string()
-    } else {
-        let mut s = '{'.to_string();
-        s.push_str(arg.get_id().as_str());
-        s
-    };
-    (arg.get_display_order(), key)
+fn option_sort_key(arg: &Arg) -> usize {
+    arg.get_display_order()
 }
 
 pub(crate) fn dimensions() -> (Option<usize>, Option<usize>) {
@@ -1070,10 +1050,6 @@ fn should_show_arg(use_long: bool, arg: &Arg) -> bool {
 
 fn should_show_subcommand(subcommand: &Command) -> bool {
     !subcommand.is_hide_set()
-}
-
-fn longest_filter(arg: &Arg) -> bool {
-    arg.is_takes_value_set() || arg.get_long().is_some() || arg.get_short().is_none()
 }
 
 #[cfg(test)]
