@@ -654,7 +654,6 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
         let help_is_empty = help.is_empty();
         self.writer.push_styled(&help);
         if let Some(arg) = arg {
-            const DASH_SPACE: usize = "- ".len();
             let possible_vals = arg.get_possible_values();
             if !possible_vals.is_empty()
                 && !arg.is_hide_possible_values_set()
@@ -671,8 +670,8 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
                     .max()
                     .expect("Only called with possible value");
 
-                let spaces = spaces + TAB_WIDTH - DASH_SPACE;
-                let trailing_indent = spaces + DASH_SPACE;
+                let spaces = spaces + TAB_WIDTH - TAB_WIDTH;
+                let trailing_indent = spaces + TAB_WIDTH;
                 let trailing_indent = self.get_spaces(trailing_indent);
 
                 if !help_is_empty {
@@ -683,7 +682,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
                     let name = pv.get_name();
                     let _ = write!(
                         self.writer,
-                        "\n{:spaces$}- {}{name}{}",
+                        "\n{:spaces$}{TAB}- {}{name}{}",
                         "",
                         literal.render(),
                         literal.render_reset()

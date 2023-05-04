@@ -395,8 +395,8 @@ Arguments:
           Argument help
 
           Possible values:
-          - foo: Foo help
-          - bar: Bar help
+            - foo: Foo help
+            - bar: Bar help
 
 Options:
   -h, --help

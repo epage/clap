@@ -449,19 +449,19 @@ Usage: test [OPTIONS]
 Options:
       --possible-values <possible_values>
           Possible values:
-          - short_name: Long enough help message, barely warrant wrapping
-          - second:     Short help gets handled the same
+            - short_name: Long enough help message, barely warrant wrapping
+            - second:     Short help gets handled the same
 
       --possible-values-with-new-line <possible_values_with_new_line>
           Possible values:
-          - long enough name to trigger new line: Really long enough help message to clearly warrant
+            - long enough name to trigger new line: Really long enough help message to clearly warrant
             wrapping believe me
-          - second
+            - second
 
       --possible-values-without-new-line <possible_values_without_new_line>
           Possible values:
-          - name:   Short enough help message with no wrapping
-          - second: short help
+            - name:   Short enough help message with no wrapping
+            - second: short help
 
   -h, --help
           Print help (see a summary with '-h')
@@ -635,8 +635,8 @@ Options:
           Some vals
 
           Possible values:
-          - fast
-          - slow: not as fast
+            - fast
+            - slow: not as fast
 
   -c, --cafe <FILE>
           A coffeehouse, coffee shop, or café.
