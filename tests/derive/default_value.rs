@@ -103,7 +103,7 @@ fn default_values_t() {
     );
 
     let help = utils::get_long_help::<Opt>();
-    assert!(help.contains("[default: 1 2 3]"));
+    assert!(help.contains("[default: 1, 2, 3]"));
 }
 
 #[test]
@@ -161,7 +161,7 @@ fn default_values_os_t() {
     );
 
     let help = utils::get_long_help::<Opt>();
-    assert!(help.contains("[default: abc.def 123.foo]"));
+    assert!(help.contains("[default: abc.def, 123.foo]"));
 }
 
 #[test]

@@ -493,7 +493,8 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
 
     /// Writes help for an argument to the wrapped stream.
     fn write_arg(&mut self, arg: &Arg, next_line_help: bool, longest: usize) {
-        let spec_vals = &self.spec_vals(arg);
+        let mut spec_vals = StyledStr::new();
+        self.spec_vals(&mut spec_vals, arg);
 
         self.writer.push_str(TAB);
         self.short(arg);
@@ -512,7 +513,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
                 .unwrap_or_default()
         };
 
-        self.help(Some(arg), about, spec_vals, next_line_help, longest);
+        self.help(Some(arg), about, &spec_vals, next_line_help, longest);
     }
 
     /// Writes argument's short command to the wrapped stream.
@@ -602,7 +603,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
         &mut self,
         arg: Option<&Arg>,
         about: &StyledStr,
-        spec_vals: &str,
+        spec_vals: &StyledStr,
         next_line_help: bool,
         longest: usize,
     ) {
@@ -639,7 +640,7 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
                 };
                 help.push_str(sep);
             }
-            help.push_str(spec_vals);
+            help.push_styled(spec_vals);
         }
         let avail_chars = self.term_w.saturating_sub(spaces);
         debug!(
@@ -716,19 +717,20 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
         args.iter()
             .filter(|arg| should_show_arg(self.use_long, arg))
             .any(|arg| {
-                let spec_vals = &self.spec_vals(arg);
-                self.arg_next_line_help(arg, spec_vals, longest)
+                let mut spec_vals = StyledStr::new();
+                self.spec_vals(&mut spec_vals, arg);
+                self.arg_next_line_help(arg, &spec_vals, longest)
             })
     }
 
-    fn arg_next_line_help(&self, arg: &Arg, spec_vals: &str, longest: usize) -> bool {
+    fn arg_next_line_help(&self, arg: &Arg, spec_vals: &StyledStr, longest: usize) -> bool {
         if self.next_line_help || arg.is_next_line_help_set() || self.use_long {
             // setting_next_line
             true
         } else {
             // force_next_line
             let h = arg.get_help().unwrap_or_default();
-            let h_w = h.display_width() + display_width(spec_vals);
+            let h_w = h.display_width() + spec_vals.display_width();
             let taken = if arg.is_positional() {
                 longest + TAB_WIDTH * 2
             } else {
@@ -740,9 +742,10 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
         }
     }
 
-    fn spec_vals(&self, a: &Arg) -> String {
+    fn spec_vals(&self, styled: &mut StyledStr, a: &Arg) {
         debug!("HelpTemplate::spec_vals: a={}", a);
-        let mut spec_vals = Vec::new();
+        let mut first = true;
+
         #[cfg(feature = "env")]
         if let Some(ref env) = a.env {
             if !a.is_hide_env_set() {
@@ -750,69 +753,57 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
                     "HelpTemplate::spec_vals: Found environment variable...[{:?}:{:?}]",
                     env.0, env.1
                 );
-                let env_val = if !a.is_hide_env_values_set() {
-                    format!(
+                let mut val = env.0.to_string_lossy().into_owned();
+                if !a.is_hide_env_values_set() {
+                    use std::fmt::Write as _;
+                    let _ = write!(
+                        val,
                         "={}",
                         env.1
                             .as_ref()
                             .map(|s| s.to_string_lossy())
                             .unwrap_or_default()
-                    )
-                } else {
-                    Default::default()
-                };
-                let env_info = format!("[env: {}{}]", env.0.to_string_lossy(), env_val);
-                spec_vals.push(env_info);
+                    );
+                }
+                let mut iter = [Cow::from(val)].into_iter();
+                self.write_spec(styled, &mut first, "env", &mut iter);
             }
         }
+
         if a.is_takes_value_set() && !a.is_hide_default_value_set() && !a.default_vals.is_empty() {
             debug!(
                 "HelpTemplate::spec_vals: Found default value...[{:?}]",
                 a.default_vals
             );
-
-            let pvs = a
-                .default_vals
-                .iter()
-                .map(|pvs| pvs.to_string_lossy())
-                .map(|pvs| {
-                    if pvs.contains(char::is_whitespace) {
-                        Cow::from(format!("{pvs:?}"))
-                    } else {
-                        pvs
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(" ");
-
-            spec_vals.push(format!("[default: {pvs}]"));
+            let mut iter = a.default_vals.iter().map(|val| val.to_string_lossy());
+            self.write_spec(styled, &mut first, "default", &mut iter);
         }
 
         let als = a
             .aliases
             .iter()
             .filter(|&als| als.1) // visible
-            .map(|als| als.0.as_str()) // name
-            .collect::<Vec<_>>()
-            .join(", ");
+            .map(|als| Cow::from(als.0.as_str())) // name
+            .collect::<Vec<_>>();
         if !als.is_empty() {
-            debug!("HelpTemplate::spec_vals: Found aliases...{:?}", a.aliases);
-            spec_vals.push(format!("[aliases: {als}]"));
+            debug!("HelpTemplate::spec_vals: Found aliases...{:?}", aaliases);
+            let mut iter = als.into_iter();
+            self.write_spec(styled, &mut first, "aliases", &mut iter);
         }
 
         let als = a
             .short_aliases
             .iter()
             .filter(|&als| als.1) // visible
-            .map(|&als| als.0.to_string()) // name
-            .collect::<Vec<_>>()
-            .join(", ");
+            .map(|&als| Cow::from(als.0.to_string())) // name
+            .collect::<Vec<_>>();
         if !als.is_empty() {
             debug!(
                 "HelpTemplate::spec_vals: Found short aliases...{:?}",
                 a.short_aliases
             );
-            spec_vals.push(format!("[short aliases: {als}]"));
+            let mut iter = als.into_iter();
+            self.write_spec(styled, &mut first, "short aliases", &mut iter);
         }
 
         let possible_vals = a.get_possible_values();
@@ -822,16 +813,39 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
                 possible_vals
             );
 
-            let pvs = possible_vals
+            let mut iter = possible_vals
                 .iter()
-                .filter_map(PossibleValue::get_visible_quoted_name)
-                .collect::<Vec<_>>()
-                .join(", ");
-
-            spec_vals.push(format!("[possible values: {pvs}]"));
+                .filter(|pv| !pv.is_hide_set())
+                .map(|pv| Cow::from(pv.get_name()));
+            self.write_spec(styled, &mut first, "possible values", &mut iter);
         }
-        let connector = if self.use_long { "\n" } else { " " };
-        spec_vals.join(connector)
+    }
+
+    fn write_spec(
+        &self,
+        styled: &mut StyledStr,
+        first: &mut bool,
+        name: &str,
+        values: &mut dyn Iterator<Item = Cow<str>>,
+    ) {
+        use std::fmt::Write as _;
+
+        if !*first {
+            let connector = if self.use_long { "\n" } else { " " };
+            styled.push_str(connector);
+        }
+        *first = false;
+        let _ = write!(styled, "[{name}: ");
+        for (i, mut val) in values.enumerate() {
+            if val.contains(char::is_whitespace) {
+                val = Cow::from(format!("{val:?}"));
+            }
+            if 0 < i {
+                styled.push_str(", ");
+            }
+            let _ = write!(styled, "{val}");
+        }
+        let _ = write!(styled, "]");
     }
 
     fn get_spaces(&self, n: usize) -> String {
@@ -917,9 +931,10 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
         subcommands
             .into_iter()
             .filter(|&subcommand| should_show_subcommand(subcommand))
-            .any(|subcommand| {
-                let spec_vals = &self.sc_spec_vals(subcommand);
-                self.subcommand_next_line_help(subcommand, spec_vals, longest)
+            .any(|cmd| {
+                let mut spec_vals = StyledStr::new();
+                self.sc_spec_vals(&mut spec_vals, cmd);
+                self.subcommand_next_line_help(cmd, &spec_vals, longest)
             })
     }
 
@@ -932,7 +947,8 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
     ) {
         debug!("HelpTemplate::write_subcommand");
 
-        let spec_vals = &self.sc_spec_vals(cmd);
+        let mut spec_vals = StyledStr::new();
+        self.sc_spec_vals(&mut spec_vals, cmd);
 
         let about = cmd
             .get_about()
@@ -940,43 +956,38 @@ impl<'cmd, 'writer> HelpTemplate<'cmd, 'writer> {
             .unwrap_or_default();
 
         self.subcmd(sc_str, next_line_help, longest);
-        self.help(None, about, spec_vals, next_line_help, longest)
+        self.help(None, about, &spec_vals, next_line_help, longest)
     }
 
-    fn sc_spec_vals(&self, a: &Command) -> String {
+    fn sc_spec_vals(&self, styled: &mut StyledStr, a: &Command) {
         debug!("HelpTemplate::sc_spec_vals: a={}", a.get_name());
-        let mut spec_vals = vec![];
 
-        let mut short_als = a
+        let mut first = true;
+
+        let mut als = a
             .get_visible_short_flag_aliases()
-            .map(|a| format!("-{a}"))
+            .map(|a| Cow::from(format!("-{a}")))
             .collect::<Vec<_>>();
-        let als = a.get_visible_aliases().map(|s| s.to_string());
-        short_als.extend(als);
-        let all_als = short_als.join(", ");
-        if !all_als.is_empty() {
-            debug!(
-                "HelpTemplate::spec_vals: Found aliases...{:?}",
-                a.get_all_aliases().collect::<Vec<_>>()
-            );
-            debug!(
-                "HelpTemplate::spec_vals: Found short flag aliases...{:?}",
-                a.get_all_short_flag_aliases().collect::<Vec<_>>()
-            );
-            spec_vals.push(format!("[aliases: {all_als}]"));
+        als.extend(a.get_visible_aliases().map(|s| Cow::from(s)));
+        if !als.is_empty() {
+            let mut iter = als.into_iter();
+            self.write_spec(styled, &mut first, "aliases", &mut iter);
         }
-
-        spec_vals.join(" ")
     }
 
-    fn subcommand_next_line_help(&self, cmd: &Command, spec_vals: &str, longest: usize) -> bool {
+    fn subcommand_next_line_help(
+        &self,
+        cmd: &Command,
+        spec_vals: &StyledStr,
+        longest: usize,
+    ) -> bool {
         if self.next_line_help | self.use_long {
             // setting_next_line
             true
         } else {
             // force_next_line
             let h = cmd.get_about().unwrap_or_default();
-            let h_w = h.display_width() + display_width(spec_vals);
+            let h_w = h.display_width() + spec_vals.display_width();
             let taken = longest + TAB_WIDTH * 2;
             self.term_w >= taken
                 && (taken as f32 / self.term_w as f32) > 0.40

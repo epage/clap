@@ -173,21 +173,6 @@ impl PossibleValue {
         !self.hide && self.help.is_some()
     }
 
-    /// Get the name if argument value is not hidden, `None` otherwise,
-    /// but wrapped in quotes if it contains whitespace
-    #[cfg(feature = "help")]
-    pub(crate) fn get_visible_quoted_name(&self) -> Option<std::borrow::Cow<'_, str>> {
-        if !self.hide {
-            Some(if self.name.contains(char::is_whitespace) {
-                format!("{:?}", self.name).into()
-            } else {
-                self.name.as_str().into()
-            })
-        } else {
-            None
-        }
-    }
-
     /// Returns all valid values of the argument value.
     ///
     /// Namely the name and all aliases.
